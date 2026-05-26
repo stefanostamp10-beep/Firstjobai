@@ -1,0 +1,118 @@
+your-repo/
+  index.html
+your-repo/
+  api/
+    generate.js
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FirstJob.ai</title>
+
+<style>
+body { font-family: system-ui; margin:0; background:#f5f7fb; }
+nav { padding:16px 24px; background:#fff; font-weight:800; border-bottom:1px solid #eee; }
+.hero { padding:50px 20px; text-align:center; background:#2563eb; color:#fff; }
+.container { max-width:720px; margin:30px auto; padding:20px; }
+.card { background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; }
+input, textarea { width:100%; padding:10px; margin:8px 0 14px; border-radius:8px; border:1px solid #ddd; }
+button { width:100%; padding:12px; border:none; border-radius:10px; background:#2563eb; color:#fff; font-weight:700; cursor:pointer; }
+button:hover { background:#1d4ed8; }
+.output { margin-top:20px; white-space:pre-wrap; background:#f3f4f6; padding:15px; border-radius:10px; min-height:120px; }
+.badge { font-size:12px; background:#e0f2fe; padding:4px 10px; border-radius:20px; color:#0369a1; display:inline-block; margin-bottom:10px; }
+</style>
+</head>
+
+<body>
+
+<nav>FirstJob.ai <span class="badge">SaaS MVP</span></nav>
+
+<div class="hero">
+  <h1>AI CV Generator SaaS</h1>
+  <p>Generate professional CVs instantly with Claude</p>
+</div>
+
+<div class="container">
+  <div class="card">
+
+    <input id="name" placeholder="Full Name"/>
+    <textarea id="skills" placeholder="Skills"></textarea>
+    <textarea id="exp" placeholder="Experience"></textarea>
+
+    <button onclick="generateCV()">Generate CV</button>
+
+    <div class="output" id="output">Your CV will appear here...</div>
+
+  </div>
+</div>
+
+<script>
+async function generateCV() {
+  const output = document.getElementById("output");
+  output.innerText = "Generating...";
+
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      name: document.getElementById("name").value,
+      skills: document.getElementById("skills").value,
+      exp: document.getElementById("exp").value
+    })
+  });
+
+  const data = await res.json();
+  output.innerText = data.text || "Error";
+}
+</script>
+
+</body>
+</html>
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Only POST allowed" });
+  }
+
+  const { name, skills, exp } = req.body;
+
+  // 🔒 BASIC SaaS LIMIT (simple anti-abuse)
+  const ip = req.headers["x-forwarded-for"] || "unknown";
+
+  const prompt = `
+Create a professional CV.
+
+Name: ${name}
+Skills: ${skills}
+Experience: ${exp}
+
+Make it clean, structured, modern.
+`;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 900,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await r.json();
+    const text = data?.content?.[0]?.text || "No response";
+
+    res.status(200).json({
+      text,
+      meta: { ip } // optional tracking for SaaS analytics
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+}
